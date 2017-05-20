@@ -104,6 +104,7 @@ void CNFGTackRectangle( short x1, short y1, short x2, short y2 )
 
 void CNFGTackPoly( RDPoint * points, int verts )
 {
+    CGContextBeginPath(bufferContext);
     if (verts==0) return;
     CGContextMoveToPoint(bufferContext, points[0].x, app_sh - points[0].y - 1);
     for (int i=1; i<verts; i++){
@@ -124,39 +125,37 @@ void CNFGGetDimensions( short * x, short * y )
 - (void)drawRect:(NSRect) r
 {
     CGContextRef viewContext = [[NSGraphicsContext currentContext] graphicsPort];
-    CGImageRef frameImage = CGBitmapContextCreateImage(bufferContext);
+    // CGImageRef frameImage = CGBitmapContextCreateImage(bufferContext);
+    CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, bufferData, 4*app_sw*app_sh, NULL);
+    CGImageRef frameImage = CGImageCreate(app_sw, app_sh, 8, 32, 4*app_sw, colorSpace, kCGBitmapByteOrderDefault, provider, NULL, false, kCGRenderingIntentDefault);
     CGContextDrawImage(viewContext, frameRect, frameImage);
     CGImageRelease(frameImage);
+    CGDataProviderRelease(provider);
 }
 @end
 
 CGContextRef createBitmapContext (int pixelsWide,
                             int pixelsHigh)
 {
-    CGContextRef    context = NULL;
     int             bitmapByteCount;
     int             bitmapBytesPerRow;
  
     bitmapBytesPerRow   = (pixelsWide * 4);// 1
     bitmapByteCount     = (bitmapBytesPerRow * pixelsHigh);
  
-    colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceGenericRGB);
+    colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceGenericRGBLinear);
     bufferData = calloc( bitmapByteCount, sizeof(uint8_t) );
 
-    NSLog(@"Bytes: %d", pixelsWide*pixelsHigh);
-    NSLog(@"Width: %d Height: %d", pixelsWide, pixelsHigh);
-
-
-    context = CGBitmapContextCreate (bufferData,// 4
+    CGContextRef context = CGBitmapContextCreate (bufferData,// 4
                                     pixelsWide,
                                     pixelsHigh,
                                     8,      // bits per component
                                     bitmapBytesPerRow,
                                     colorSpace,
                                     kCGImageAlphaNoneSkipLast);
-    // CGFloat inset = 0.5 / [[UIScreen mainScreen] scale];
+
     // CGContextSetShouldAntialias(context, NO);
-    CGContextSetLineWidth(context, 1.0);
+    // CGContextSetLineWidth(context, 0.5);
 
     return context;// 7
 }
@@ -183,10 +182,10 @@ void CNFGSetupFullscreen( const char * WindowName, int screen_number )
     inFullscreen = YES;
     initApp();
 
-    NSDictionary *fullScreenOptions = [[NSDictionary dictionaryWithObjectsAndKeys: 
+    NSDictionary *fullScreenOptions = [NSDictionary dictionaryWithObjectsAndKeys: 
         [NSNumber numberWithInt: 
             (NSApplicationPresentationAutoHideMenuBar | NSApplicationPresentationAutoHideDock) ],
-        NSFullScreenModeApplicationPresentationOptions, nil] retain];
+        NSFullScreenModeApplicationPresentationOptions, nil];
     [app_imageView enterFullScreenMode:[[NSScreen screens] objectAtIndex:screen_number] withOptions:fullScreenOptions];
     CGSize app_imageSize = [app_imageView frame].size;
     app_sw = app_imageSize.width; app_sh = app_imageSize.height;
@@ -241,6 +240,8 @@ static int keycode(key)
 
 void CNFGHandleInput()
 {
+    [app_pool release];
+    app_pool = [NSAutoreleasePool new];
     // Quit if no open windows left
     if ([[NSApp windows] count] == 0) return;//[NSApp terminate: nil];
 
@@ -325,9 +326,6 @@ void CNFGSwapBuffers()
 
 void CNFGUpdateScreenWithBitmap( unsigned long * data, int w, int h )
 {
-    [app_pool release];
-    app_pool = [NSAutoreleasePool new];
-
     CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, data, 4*w*h, NULL);
     CGImageRef bitmap = CGImageCreate(w, h, 8, 32, 4*w, colorSpace, kCGBitmapByteOrder32Little, provider, NULL, false, kCGRenderingIntentDefault);
     CGContextDrawImage(bufferContext, frameRect, bitmap);
