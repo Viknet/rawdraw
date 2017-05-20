@@ -9,7 +9,7 @@
 #include "CNFGFunctions.h"
 
 id app_menubar, app_appMenuItem, app_appMenu, app_appName, app_quitMenuItem, app_quitTitle, app_quitMenuItem, app_window;
-id app_imageView;
+NSView *app_imageView;
 CGColorSpaceRef colorSpace;
 CGContextRef bufferContext;
 uint32_t *bufferData;
@@ -104,8 +104,8 @@ void CNFGTackRectangle( short x1, short y1, short x2, short y2 )
 
 void CNFGTackPoly( RDPoint * points, int verts )
 {
-    CGContextBeginPath(bufferContext);
     if (verts==0) return;
+    CGContextBeginPath(bufferContext);
     CGContextMoveToPoint(bufferContext, points[0].x, app_sh - points[0].y - 1);
     for (int i=1; i<verts; i++){
         CGContextAddLineToPoint(bufferContext, points[i].x, app_sh - points[i].y - 1);
@@ -122,13 +122,28 @@ void CNFGGetDimensions( short * x, short * y )
 @interface MyView : NSView
 @end
 @implementation MyView
-- (void)drawRect:(NSRect) r
+- (id)initWithFrame:(NSRect)frame {
+    self = [super initWithFrame:frame];
+    if (self) 
+    {
+        [self setWantsLayer:YES];
+        [self setLayerContentsRedrawPolicy: NSViewLayerContentsRedrawOnSetNeedsDisplay];
+        // [self setLayerContentsPlacement: NSViewLayerContentsPlacementCenter];
+    }
+    return self;
+}
+
+- (BOOL) wantsUpdateLayer
 {
-    CGContextRef viewContext = [[NSGraphicsContext currentContext] graphicsPort];
-    // CGImageRef frameImage = CGBitmapContextCreateImage(bufferContext);
+    return YES;
+}
+- (void) updateLayer
+{
     CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, bufferData, 4*app_sw*app_sh, NULL);
     CGImageRef frameImage = CGImageCreate(app_sw, app_sh, 8, 32, 4*app_sw, colorSpace, kCGBitmapByteOrderDefault, provider, NULL, false, kCGRenderingIntentDefault);
-    CGContextDrawImage(viewContext, frameRect, frameImage);
+
+    [app_imageView.layer setContents:(id)frameImage];
+
     CGImageRelease(frameImage);
     CGDataProviderRelease(provider);
 }
@@ -140,24 +155,25 @@ CGContextRef createBitmapContext (int pixelsWide,
     int             bitmapByteCount;
     int             bitmapBytesPerRow;
  
-    bitmapBytesPerRow   = (pixelsWide * 4);// 1
+    bitmapBytesPerRow   = (pixelsWide * 4);
     bitmapByteCount     = (bitmapBytesPerRow * pixelsHigh);
  
     colorSpace = CGColorSpaceCreateWithName(kCGColorSpaceGenericRGBLinear);
     bufferData = calloc( bitmapByteCount, sizeof(uint8_t) );
 
-    CGContextRef context = CGBitmapContextCreate (bufferData,// 4
+    CGContextRef context = CGBitmapContextCreate (bufferData,
                                     pixelsWide,
                                     pixelsHigh,
-                                    8,      // bits per component
+                                    8,
                                     bitmapBytesPerRow,
                                     colorSpace,
                                     kCGImageAlphaNoneSkipLast);
 
+    CGContextSetInterpolationQuality(context, kCGInterpolationNone);
     // CGContextSetShouldAntialias(context, NO);
     // CGContextSetLineWidth(context, 0.5);
 
-    return context;// 7
+    return context;
 }
 
 void initApp(){
@@ -187,9 +203,9 @@ void CNFGSetupFullscreen( const char * WindowName, int screen_number )
             (NSApplicationPresentationAutoHideMenuBar | NSApplicationPresentationAutoHideDock) ],
         NSFullScreenModeApplicationPresentationOptions, nil];
     [app_imageView enterFullScreenMode:[[NSScreen screens] objectAtIndex:screen_number] withOptions:fullScreenOptions];
-    CGSize app_imageSize = [app_imageView frame].size;
+    frameRect = [app_imageView frame];
+    CGSize app_imageSize = frameRect.size;
     app_sw = app_imageSize.width; app_sh = app_imageSize.height;
-    frameRect = NSMakeRect(0, 0, app_sw, app_sh);
     bufferContext = createBitmapContext (app_sw, app_sh);
     [NSApp finishLaunching];
     [NSApp updateWindows];
@@ -327,7 +343,7 @@ void CNFGSwapBuffers()
 void CNFGUpdateScreenWithBitmap( unsigned long * data, int w, int h )
 {
     CGDataProviderRef provider = CGDataProviderCreateWithData(NULL, data, 4*w*h, NULL);
-    CGImageRef bitmap = CGImageCreate(w, h, 8, 32, 4*w, colorSpace, kCGBitmapByteOrder32Little, provider, NULL, false, kCGRenderingIntentDefault);
+    CGImageRef bitmap = CGImageCreate(w, h, 8, 32, 4*w, colorSpace, kCGBitmapByteOrderDefault, provider, NULL, false, kCGRenderingIntentDefault);
     CGContextDrawImage(bufferContext, frameRect, bitmap);
     CGImageRelease(bitmap);
     CGDataProviderRelease(provider);
