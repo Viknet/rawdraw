@@ -38,14 +38,63 @@ void CNFGTackPixel( short x, short y )
     bufferData[x + app_sw * y] = CNFGLastColor;
 }
 
+// void CNFGTackSegment( short x1, short y1, short x2, short y2 )
+// {
+//     y1 = app_sh - y1 - 1;
+//     y2 = app_sh - y2 - 1;
+//     CGContextBeginPath(bufferContext);
+//     CGContextMoveToPoint(bufferContext, x1, y1);
+//     CGContextAddLineToPoint(bufferContext, x2, y2);
+//     CGContextStrokePath(bufferContext);
+// }
+
 void CNFGTackSegment( short x1, short y1, short x2, short y2 )
 {
-    y1 = app_sh - y1 - 1;
-    y2 = app_sh - y2 - 1;
-    CGContextBeginPath(bufferContext);
-    CGContextMoveToPoint(bufferContext, x1, y1);
-    CGContextAddLineToPoint(bufferContext, x2, y2);
-    CGContextStrokePath(bufferContext);
+    short tx, ty;
+    float slope, lp;
+
+    short dx = x2 - x1;
+    short dy = y2 - y1;
+
+    if( dx < 0 ) dx = -dx;
+    if( dy < 0 ) dy = -dy;
+
+    if( dx > dy )
+    {
+        short minx = (x1 < x2)?x1:x2;
+        short maxx = (x1 < x2)?x2:x1;
+        short miny = (x1 < x2)?y1:y2;
+        short maxy = (x1 < x2)?y2:y1;
+        float thisy = miny;
+        slope = (float)(maxy-miny) / (float)(maxx-minx);
+
+        for( tx = minx; tx <= maxx; tx++ )
+        {
+            ty = thisy;
+            if( tx < 0 || ty < 0 || ty >= app_sh ) continue;
+            if( tx >= app_sw ) break;
+            bufferData[ty * app_sw + tx] = CNFGLastColor;
+            thisy += slope;
+        }
+    }
+    else
+    {
+        short minx = (y1 < y2)?x1:x2;
+        short maxx = (y1 < y2)?x2:x1;
+        short miny = (y1 < y2)?y1:y2;
+        short maxy = (y1 < y2)?y2:y1;
+        float thisx = minx;
+        slope = (float)(maxx-minx) / (float)(maxy-miny);
+
+        for( ty = miny; ty <= maxy; ty++ )
+        {
+            tx = thisx;
+            if( ty < 0 || tx < 0 || tx >= app_sw ) continue;
+            if( ty >= app_sh ) break;
+            bufferData[ty * app_sw + tx] = CNFGLastColor;
+            thisx += slope;
+        }
+    }
 }
 
 void CNFGTackRectangle( short x1, short y1, short x2, short y2 )
@@ -75,7 +124,7 @@ void CNFGGetDimensions( short * x, short * y )
 - (void)drawRect:(NSRect) r
 {
     CGContextRef viewContext = [[NSGraphicsContext currentContext] graphicsPort];
-    CGImageRef frameImage = CGBitmapContextCreateImage (bufferContext);
+    CGImageRef frameImage = CGBitmapContextCreateImage(bufferContext);
     CGContextDrawImage(viewContext, frameRect, frameImage);
     CGImageRelease(frameImage);
 }
