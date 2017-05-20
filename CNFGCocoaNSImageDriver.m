@@ -47,7 +47,6 @@ void CNFGSetupFullscreen( const char * WindowName, int screen_number )
             (NSApplicationPresentationAutoHideMenuBar | NSApplicationPresentationAutoHideDock) ],
         NSFullScreenModeApplicationPresentationOptions, nil] retain];
     [app_imageView enterFullScreenMode:[[NSScreen screens] objectAtIndex:screen_number] withOptions:fullScreenOptions];
-    [app_imageView unregisterDraggedTypes];
     CGSize app_imageSize = [app_imageView frame].size;
     app_sw = app_imageSize.width; app_sh = app_imageSize.height;
     [NSApp finishLaunching];
@@ -84,7 +83,7 @@ void CNFGSetup( const char * WindowName, int sw, int sh )
     [NSApp activateIgnoringOtherApps:YES];
     [NSApp finishLaunching];
     [NSApp updateWindows];
-    app_pool = [[NSAutoreleasePool alloc] init];
+    app_pool = [NSAutoreleasePool new];
 }
 
 #define XK_Left                          0xff51  /* Move left, left arrow */
@@ -109,7 +108,7 @@ static int keycode(key)
 void CNFGHandleInput()
 {
     // Quit if no open windows left
-    // if ([[NSApp windows] count] == 0) [NSApp terminate: nil];
+    if ([[NSApp windows] count] == 0) return;//[NSApp terminate: nil];
 
     //----------------------
     // Peek at the next event

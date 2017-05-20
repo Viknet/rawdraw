@@ -1,5 +1,7 @@
 # rawdraw
 
+**This fork was created only for testing different drawing methods on macOS.**
+
 An OS-Agnostic (including No OS AT ALL!) drawing system.  It includes lines, boxes, linetext, points, bitmaps.  
 
 The drawing method can either be by the OS (i.e. SetPixel in Windows), Rasterized in software (we draw our own lines) or by OpenGL where available.
