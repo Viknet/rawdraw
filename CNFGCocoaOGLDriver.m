@@ -5,6 +5,10 @@
 #include "CNFGRasterizer.h"
 
 int app_sw=-999, app_sh=-999;
+BOOL inFullscreen = false;
+
+id app_oglView;
+id app_oglContext;
 
 typedef struct
 {
@@ -15,18 +19,6 @@ typedef struct
 {
     GLfloat x,y,z,w;
 } Vector4;
-
-typedef struct
-{
-    GLfloat r,g,b,a;
-} Colour;
-
-typedef struct
-{
-    Vector4 position;
-    Colour colour;
-} Vertex;
-
 
 int CompileGLSLShader(const char *vert, const char *frag)
 {
@@ -54,8 +46,7 @@ int CompileGLSLShader(const char *vert, const char *frag)
         exit(1);
     }
     
-
-    int my_program         = glCreateProgram();
+    int my_program = glCreateProgram();
     glAttachShader(my_program, my_vertex_shader);
     glAttachShader(my_program, my_fragment_shader);
     glBindFragDataLocation(my_program, 0, "fragColour");
@@ -78,7 +69,7 @@ GLuint vertexArrayObject;
 GLuint vertexBuffer;
 
 // GLint texUnit, position, texCoord;
-GLint positionUniform, colourAttribute, positionAttribute;
+GLint positionUniform, positionAttribute, textureUniform;
 
 // static const GLfloat g_vertex_buffer_data[] = { 
 //     -1.0f, -1.0f,
@@ -90,11 +81,11 @@ GLint positionUniform, colourAttribute, positionAttribute;
 
 void loadBufferData()
 {
-    Vertex vertexData[4] = {
-        { .position = { .x=-0.5, .y=-0.5, .z=0.0, .w=1.0 }, .colour = { .r=1.0, .g=0.0, .b=0.0, .a=1.0 } },
-        { .position = { .x=-0.5, .y= 0.5, .z=0.0, .w=1.0 }, .colour = { .r=0.0, .g=1.0, .b=0.0, .a=1.0 } },
-        { .position = { .x= 0.5, .y= 0.5, .z=0.0, .w=1.0 }, .colour = { .r=0.0, .g=0.0, .b=1.0, .a=1.0 } },
-        { .position = { .x= 0.5, .y=-0.5, .z=0.0, .w=1.0 }, .colour = { .r=1.0, .g=1.0, .b=1.0, .a=1.0 } }
+    Vector4 vertexData[4] = {
+        { .x=-1.0, .y=-1.0, .z=0.0, .w=1.0 },
+        { .x=-1.0, .y= 1.0, .z=0.0, .w=1.0 },
+        { .x= 1.0, .y= 1.0, .z=0.0, .w=1.0 },
+        { .x= 1.0, .y=-1.0, .z=0.0, .w=1.0 }
     };
     
     glGenVertexArrays(1, &vertexArrayObject);
@@ -102,155 +93,88 @@ void loadBufferData()
     
     glGenBuffers(1, &vertexBuffer);
     glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-    glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(Vertex), vertexData, GL_STATIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, 4 * sizeof(Vector4), vertexData, GL_STATIC_DRAW);
     
     glEnableVertexAttribArray((GLuint)positionAttribute);
-    glEnableVertexAttribArray((GLuint)colourAttribute  );
-    glVertexAttribPointer((GLuint)positionAttribute, 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const GLvoid *)offsetof(Vertex, position));
-    glVertexAttribPointer((GLuint)colourAttribute  , 4, GL_FLOAT, GL_FALSE, sizeof(Vertex), (const GLvoid *)offsetof(Vertex, colour  ));
+    glVertexAttribPointer((GLuint)positionAttribute, 4, GL_FLOAT, GL_FALSE, sizeof(Vector4), (const GLvoid *) 0);
 }
 
 void oglInit()
 {
-    // glGenBuffers(1, &vertex_buffer);
-    // glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-    // glBufferData(GL_ARRAY_BUFFER, sizeof(g_vertex_buffer_data), g_vertex_buffer_data, GL_STATIC_DRAW);
-
-    // glGenBuffers(1, &element_buffer);
-    // glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, element_buffer);
-    // glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(g_element_buffer_data), g_element_buffer_data, GL_STATIC_DRAW);
-
-    // Create the fixed function shader
     const char *vertex_shader="#version 150\n\
         uniform vec2 p;\n\
         in vec4 position;\n\
-        in vec4 colour;\n\
-        out vec4 colourV;\n\
+        out vec2 texCoordV;\n\
+        out vec2 positionV;\n\
         void main (void)\n\
         {\n\
-            colourV = colour;\n\
-            gl_Position = vec4(p, 0.0, 0.0) + position;\n\
+            texCoordV   = position.xy + vec2(0.5);\n\
+            positionV   = vec2(0.5) * (position.xy + p + vec2(1.0));\n\
+            gl_Position = position    + vec4(p, 0.0, 0.0);\n\
         }";
-        /*"#version 150\n\
-        in vec2 position;\n\
-        out vec2 texCoord;\n\
-        void main()\n\
-        {\n\
-            gl_Position = vec4(position, 0.0, 1.0);\n\
-            texCoord = position * vec2(0.5) + vec2(0.5);\n\
-        }";*/
     
     const char *fragment_shader="#version 150\n\
-        in vec4 colourV;\n\
+        in vec2 positionV;\n\
+        in vec2 texCoordV;\n\
         out vec4 fragColour;\n\
+        uniform sampler2D picture;\n\
         void main(void)\n\
         {\n\
-            fragColour = colourV;\n\
+            fragColour = texture(picture, vec2(positionV.x, 1.0-positionV.y));\n\
         }";
-        /*"#version 150\n\
-        uniform sampler2D texUnit;\n\
-        in vec2 texCoord;\n\
-        out vec4 fragColour;\n\
-        void main(void) { \n\
-            fragColour = texture(texUnit, texCoord);\n\
-        }";*/
     
     shader_program = CompileGLSLShader(vertex_shader, fragment_shader);
 
+    textureUniform = glGetUniformLocation(shader_program, "picture");
     positionUniform = glGetUniformLocation(shader_program, "p");
-    colourAttribute = glGetAttribLocation(shader_program, "colour");
     positionAttribute = glGetAttribLocation(shader_program, "position");
-
     loadBufferData();
-
-    // texUnit = glGetUniformLocation(shader_program, "texUnit");
-    // texCoord = glGetAttribLocation(shader_program, "texCoord");
-    // position = glGetAttribLocation(shader_program, "position");
-
-    // // 5. Get pointers to uniforms and attributes
-    // ogl_compat_texcoord_enabled     = glGetUniformLocation(ogl_compat_shader_program, "hasTex");
-    // ogl_compat_texUnit              = glGetUniformLocation(ogl_compat_shader_program, "texUnit");
-    // ogl_compat_modelview_projection = glGetUniformLocation(ogl_compat_shader_program, "MVP");
-    // ogl_compat_colour_attribute     = glGetAttribLocation (ogl_compat_shader_program, "colour");
-    // ogl_compat_texcoord_attribute   = glGetAttribLocation (ogl_compat_shader_program, "texCoord");
-    // ogl_compat_position_attribute   = glGetAttribLocation (ogl_compat_shader_program, "position");
 }
 
-// GLuint frame_texture;
+GLuint frame_texture;
 
-// static GLuint make_texture(const uint32_t *pixels)
-// {
-//     GLuint texture;
-//     glGenTextures(1, &texture);
-//     glBindTexture(GL_TEXTURE_2D, texture);
-//     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-//     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-//     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE);
-//     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE);
-//     glTexImage2D(
-//         GL_TEXTURE_2D, 0,           /* target, level of detail */
-//         GL_RGB8,                    /* internal format */
-//         app_sw, app_sh, 0,           /* width, height, border */
-//         GL_RGBA, GL_UNSIGNED_INT_8_8_8_8,   /* external format, type */
-//         pixels                      /* pixels */
-//     );
-//     return texture;
-// }
+static GLuint make_texture(const uint32_t *pixels)
+{
+    GLuint texture;
+    glGenTextures(1, &texture);
+    glBindTexture(GL_TEXTURE_2D, texture);
+    glPixelStorei(GL_UNPACK_ROW_LENGTH, (GLint) app_sw);
+    glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE);
+    glTexImage2D(
+        GL_TEXTURE_2D, 0,           /* target, level of detail */
+        GL_RGBA8,                    /* internal format */
+        app_sw, app_sh, 0,           /* width, height, border */
+        GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV,   /* external format, type */
+        pixels                      /* pixels */
+    );
+    return texture;
+}
 
 void CNFGUpdateScreenWithBitmap( unsigned long * data, int w, int h )
 {
-    // unsigned char *rgba=data;
-    // glUseProgram(shader_program);
-    // //--------------------
-    // // Draw the scene
-    // //--------------------
-    // glClearColor(1.0,0.0,0.0,0.0);
-    // glClear(GL_COLOR_BUFFER_BIT);
-
-    // frame_texture = make_texture(buffer);
-
-    // glActiveTexture(GL_TEXTURE0);
-    // glBindTexture(GL_TEXTURE_2D, frame_texture);
-    // glUniform1i(texUnit, 0);
-
-    // glBindBuffer(GL_ARRAY_BUFFER, vertex_buffer);
-    // glVertexAttribPointer(
-    //     position,  /* attribute */
-    //     2,                                /* size */
-    //     GL_FLOAT,                         /* type */
-    //     GL_FALSE,                         /* normalized? */
-    //     sizeof(GLfloat)*2,                /* stride */
-    //     (void*)0                          /* array buffer offset */
-    // );
-    // glEnableVertexAttribArray(position);
-
-    // glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, element_buffer);
-
-    // glDrawElements(
-    //     GL_TRIANGLE_STRIP,  /* mode */
-    //     4,                  /* count */
-    //     GL_UNSIGNED_SHORT,  /* type */
-    //     (void*)0            /* element array buffer offset */
-    // );
-
-    // glDisableVertexAttribArray(position);
-    
     glClearColor(0.0, 0.0, 0.0, 1.0);
     glClear(GL_COLOR_BUFFER_BIT);
     
     glUseProgram(shader_program);
-    
-    GLfloat timeValue = 0.1;
-    Vector2 p = { .x = 0.5f * sinf(timeValue), .y = 0.5f * cosf(timeValue) };
+
+    frame_texture = make_texture(buffer);
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, frame_texture);
+
+    glUniform1i(textureUniform, 0);
+ 
+    Vector2 p = { .x = 0.0, .y = 0.0 };
     glUniform2fv(positionUniform, 1, (const GLfloat *)&p);
     
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
 }
 
-//window context functions.
-id app_oglContext;
 id app_menubar, app_appMenuItem, app_appMenu, app_appName, app_quitMenuItem, app_quitTitle, app_quitMenuItem, app_window;
-id app_oglView;
+NSRect frameRect;
 NSAutoreleasePool *app_pool;
 NSDate *app_currDate; 
 
@@ -261,24 +185,9 @@ void CNFGGetDimensions( short * x, short * y )
     *y = h;
 }
 
-void CNFGSetupFullscreen( const char * WindowName, int screen_no )
-{
-    
-}
+NSOpenGLPixelFormat *pixelFormat;
 
-void CNFGSetup( const char * WindowName, int sw, int sh )
-{
-    w = sw;
-    h = sh;
-    app_sw=sw;
-    app_sh=sh;
-    // printf("CNFGSetup\n");
-        
-    //----------------------------------
-    // Create a programmatic Cocoa OpenGL window
-    // This code is slightly modified from
-    // CocoaWithLove's Minimalist Cocoa tutorial
-    //----------------------------------
+void initApp(){
     [NSApplication sharedApplication];
     [NSApp setActivationPolicy:NSApplicationActivationPolicyRegular];
     app_menubar = [[NSMenu new] autorelease];
@@ -292,12 +201,6 @@ void CNFGSetup( const char * WindowName, int sw, int sh )
         action:@selector(terminate:) keyEquivalent:@"q"] autorelease];
     [app_appMenu addItem:app_quitMenuItem];
     [app_appMenuItem setSubmenu:app_appMenu];
-    app_window = [[[NSWindow alloc] initWithContentRect:NSMakeRect(0, 0, app_sw, app_sh)
-        styleMask:NSWindowStyleMaskBorderless | NSWindowStyleMaskTitled | NSWindowStyleMaskClosable | NSWindowStyleMaskMiniaturizable backing:NSBackingStoreBuffered defer:NO]
-            autorelease];
-
-    NSString *title = [[[NSString alloc] initWithCString: WindowName encoding: NSUTF8StringEncoding] autorelease];
-    [app_window setTitle:title];
 
     NSOpenGLPixelFormatAttribute pixelFormatAttributes[] =
     {
@@ -310,8 +213,50 @@ void CNFGSetup( const char * WindowName, int sw, int sh )
         0
     };
 
-    NSOpenGLPixelFormat *pixelFormat = [[NSOpenGLPixelFormat alloc] initWithAttributes:pixelFormatAttributes];
-    app_oglView = [[[NSOpenGLView alloc] initWithFrame:NSMakeRect(0, 0, sw, sh) pixelFormat: pixelFormat] autorelease];
+    pixelFormat = [[NSOpenGLPixelFormat alloc] initWithAttributes:pixelFormatAttributes];
+}
+
+void CNFGSetupFullscreen( const char * WindowName, int screen_number )
+{
+    inFullscreen = YES;
+    initApp();
+
+    NSDictionary *fullScreenOptions = [NSDictionary dictionaryWithObjectsAndKeys: 
+        [NSNumber numberWithInt: 
+            (NSApplicationPresentationAutoHideMenuBar | NSApplicationPresentationAutoHideDock) ],
+        NSFullScreenModeApplicationPresentationOptions, nil];
+    [app_oglView enterFullScreenMode:[[NSScreen screens] objectAtIndex:screen_number] withOptions:fullScreenOptions];
+    frameRect = [app_oglView frame];
+    CGSize app_size = frameRect.size;
+    app_sw = app_size.width; app_sh = app_size.height;
+    [NSApp finishLaunching];
+    [NSApp updateWindows];
+    app_pool = [NSAutoreleasePool new];
+}
+
+void CNFGSetup( const char * WindowName, int sw, int sh )
+{
+    app_sw=sw; app_sh=sh;
+    frameRect = NSMakeRect(0, 0, app_sw, app_sh);
+    
+    initApp();
+
+    app_window = [[[NSWindow alloc] 
+        initWithContentRect:frameRect
+        styleMask:
+                NSWindowStyleMaskBorderless | 
+                NSWindowStyleMaskResizable | 
+                NSWindowStyleMaskTitled | 
+                NSWindowStyleMaskClosable | 
+                NSWindowStyleMaskMiniaturizable 
+        backing:NSBackingStoreBuffered defer:NO]
+            autorelease];
+
+    NSString *title = [[[NSString alloc] initWithCString: WindowName encoding: NSUTF8StringEncoding] autorelease];
+    [app_window setTitle:title];
+
+    app_oglView = [[NSOpenGLView alloc] initWithFrame: frameRect pixelFormat: pixelFormat];
+
     app_oglContext = [app_oglView openGLContext];
     [app_oglContext makeCurrentContext];
 
@@ -321,16 +266,10 @@ void CNFGSetup( const char * WindowName, int sw, int sh )
     [NSApp activateIgnoringOtherApps:YES];
     [NSApp finishLaunching];
     [NSApp updateWindows];
+
     oglInit();
 
     app_pool = [NSAutoreleasePool new];
-    // Set up a 2D projection
-    //oglMatrixMode(OGL_PROJECTION);						// Select The Projection Matrix
-    //oglLoadIdentity();									// Reset The Projection Matrix
-    //oglOrtho(0.0, WIDTH, 0.0, HEIGHT, -10.0, 10.0);
-    //oglMatrixMode(OGL_MODELVIEW);							// Select The Modelview Matrix
-    //oglLoadIdentity();									// Reset The Modelview Matrix
-    //glDisable(GL_DEPTH_TEST);
 }
 
 #define XK_Left                          0xff51  /* Move left, left arrow */
@@ -354,10 +293,6 @@ static int keycode(key)
     }
     return KEY_UNDEFINED;
 }
-
-// void CNFGHandleInput()
-// {
-// }
 
 void CNFGHandleInput()
 {
