@@ -25,6 +25,9 @@ ontop : ontop.c CNFGFunctions.c CNFGXDriver.c os_generic.c
 rawdraw_mac : rawdraw.c CNFGFunctions.c CNFGCocoaDriver.m os_generic.c CNFG3D.c
 	gcc -o $@ $^ -x objective-c -framework Cocoa -framework OpenGL -lm -lpthread -DRASTERIZER
 
+rawdraw_test : test.c CNFGFunctions.c CNFGCocoaOGLDriver.m os_generic.c CNFG3D.c
+	gcc -o $@ $^ -x objective-c -framework Cocoa -framework OpenGL -lm -lpthread -DRASTERIZER
+
 rawdraw_mac_soft : rawdraw.c CNFGFunctions.c CNFGCocoaNSImageDriver.m os_generic.c CNFG3D.c
 	gcc -o $@ $^ -x objective-c -framework Cocoa -lm -lpthread
 
