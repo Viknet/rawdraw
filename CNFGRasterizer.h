@@ -238,6 +238,10 @@ void CNFGTackPixel( short x, short y )
 	buffer[x+bufferx*y] = CNFGLastColor;
 }
 
+void CNFGSwapBuffers()
+{
+	CNFGUpdateScreenWithBitmap( (long unsigned int*)buffer, bufferx, buffery );
+}
 
 
 

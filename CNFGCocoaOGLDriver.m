@@ -59,25 +59,16 @@ int CompileGLSLShader(const char *vert, const char *frag)
         exit(0);
     }
 
-    // Use The Program Object Instead Of Fixed Function OpenGL
     return my_program;
 }
 
-// GLuint vertex_buffer, element_buffer;
 GLuint shader_program;
 GLuint vertexArrayObject;
 GLuint vertexBuffer;
 
-// GLint texUnit, position, texCoord;
 GLint positionUniform, positionAttribute, textureUniform;
 
-// static const GLfloat g_vertex_buffer_data[] = { 
-//     -1.0f, -1.0f,
-//      1.0f, -1.0f,
-//     -1.0f,  1.0f,
-//      1.0f,  1.0f
-// };
-// static const GLushort g_element_buffer_data[] = { 0, 1, 2, 3 };
+GLuint frame_texture;
 
 void loadBufferData()
 {
@@ -99,41 +90,7 @@ void loadBufferData()
     glVertexAttribPointer((GLuint)positionAttribute, 4, GL_FLOAT, GL_FALSE, sizeof(Vector4), (const GLvoid *) 0);
 }
 
-void oglInit()
-{
-    const char *vertex_shader="#version 150\n\
-        uniform vec2 p;\n\
-        in vec4 position;\n\
-        out vec2 texCoordV;\n\
-        out vec2 positionV;\n\
-        void main (void)\n\
-        {\n\
-            texCoordV   = position.xy + vec2(0.5);\n\
-            positionV   = vec2(0.5) * (position.xy + p + vec2(1.0));\n\
-            gl_Position = position    + vec4(p, 0.0, 0.0);\n\
-        }";
-    
-    const char *fragment_shader="#version 150\n\
-        in vec2 positionV;\n\
-        in vec2 texCoordV;\n\
-        out vec4 fragColour;\n\
-        uniform sampler2D picture;\n\
-        void main(void)\n\
-        {\n\
-            fragColour = texture(picture, vec2(positionV.x, 1.0-positionV.y));\n\
-        }";
-    
-    shader_program = CompileGLSLShader(vertex_shader, fragment_shader);
-
-    textureUniform = glGetUniformLocation(shader_program, "picture");
-    positionUniform = glGetUniformLocation(shader_program, "p");
-    positionAttribute = glGetAttribLocation(shader_program, "position");
-    loadBufferData();
-}
-
-GLuint frame_texture;
-
-static GLuint make_texture(const uint32_t *pixels)
+GLuint make_texture()
 {
     GLuint texture;
     glGenTextures(1, &texture);
@@ -144,14 +101,35 @@ static GLuint make_texture(const uint32_t *pixels)
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S,     GL_CLAMP_TO_EDGE);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T,     GL_CLAMP_TO_EDGE);
-    glTexImage2D(
-        GL_TEXTURE_2D, 0,           /* target, level of detail */
-        GL_RGBA8,                    /* internal format */
-        app_sw, app_sh, 0,           /* width, height, border */
-        GL_RGBA, GL_UNSIGNED_INT_8_8_8_8_REV,   /* external format, type */
-        pixels                      /* pixels */
-    );
     return texture;
+}
+
+void oglInit()
+{
+    const char *vertex_shader="#version 150\n\
+        in vec4 position;\n\
+        out vec2 positionV;\n\
+        void main (void)\n\
+        {\n\
+            positionV   = vec2(0.5) * (position.xy + vec2(1.0));\n\
+            gl_Position = position;\n\
+        }";
+    
+    const char *fragment_shader="#version 150\n\
+        in vec2 positionV;\n\
+        out vec4 fragColour;\n\
+        uniform sampler2D picture;\n\
+        void main(void)\n\
+        {\n\
+            fragColour = texture(picture, vec2(positionV.x, 1.0-positionV.y));\n\
+        }";
+    
+    shader_program = CompileGLSLShader(vertex_shader, fragment_shader);
+
+    textureUniform = glGetUniformLocation(shader_program, "picture");
+    positionAttribute = glGetAttribLocation(shader_program, "position");
+    loadBufferData();
+    frame_texture = make_texture();
 }
 
 void CNFGUpdateScreenWithBitmap( unsigned long * data, int w, int h )
@@ -161,16 +139,19 @@ void CNFGUpdateScreenWithBitmap( unsigned long * data, int w, int h )
     
     glUseProgram(shader_program);
 
-    frame_texture = make_texture(buffer);
-    glActiveTexture(GL_TEXTURE0);
     glBindTexture(GL_TEXTURE_2D, frame_texture);
+    glTexImage2D(
+        GL_TEXTURE_2D, 0,           /* target, level of detail */
+        GL_RGBA8,                    /* internal format */
+        app_sw, app_sh, 0,           /* width, height, border */
+        GL_BGRA, GL_UNSIGNED_INT_8_8_8_8_REV,   /* external format, type */
+        buffer                      /* pixels */
+    );
 
     glUniform1i(textureUniform, 0);
- 
-    Vector2 p = { .x = 0.0, .y = 0.0 };
-    glUniform2fv(positionUniform, 1, (const GLfloat *)&p);
     
     glDrawArrays(GL_TRIANGLE_FAN, 0, 4);
+    [app_oglContext flushBuffer];
 }
 
 id app_menubar, app_appMenuItem, app_appMenu, app_appName, app_quitMenuItem, app_quitTitle, app_quitMenuItem, app_window;
@@ -178,11 +159,10 @@ NSRect frameRect;
 NSAutoreleasePool *app_pool;
 NSDate *app_currDate; 
 
-static int w, h;
 void CNFGGetDimensions( short * x, short * y )
 {
-    *x = w;
-    *y = h;
+    *x = app_sw;
+    *y = app_sh;
 }
 
 NSOpenGLPixelFormat *pixelFormat;
@@ -225,12 +205,23 @@ void CNFGSetupFullscreen( const char * WindowName, int screen_number )
         [NSNumber numberWithInt: 
             (NSApplicationPresentationAutoHideMenuBar | NSApplicationPresentationAutoHideDock) ],
         NSFullScreenModeApplicationPresentationOptions, nil];
-    [app_oglView enterFullScreenMode:[[NSScreen screens] objectAtIndex:screen_number] withOptions:fullScreenOptions];
-    frameRect = [app_oglView frame];
+
+    NSScreen *appScreen = [[NSScreen screens] objectAtIndex:screen_number];
+    frameRect = [appScreen frame];
+
+    app_oglView = [[NSOpenGLView alloc] initWithFrame:frameRect  pixelFormat: pixelFormat];
+    [app_oglView enterFullScreenMode:appScreen withOptions:fullScreenOptions];
+
+    app_oglContext = [app_oglView openGLContext];
+    [app_oglContext makeCurrentContext];
+
     CGSize app_size = frameRect.size;
     app_sw = app_size.width; app_sh = app_size.height;
     [NSApp finishLaunching];
     [NSApp updateWindows];
+
+    oglInit();
+
     app_pool = [NSAutoreleasePool new];
 }
 
@@ -362,10 +353,10 @@ void CNFGHandleInput()
     [app_currDate release];
 }
 
-void CNFGSwapBuffers()
-{
-    CNFGUpdateScreenWithBitmap( (long unsigned int*)buffer, bufferx, buffery );
-    [app_oglContext flushBuffer];
-}
+// void CNFGSwapBuffers()
+// {
+//     CNFGUpdateScreenWithBitmap( (long unsigned int*)buffer, bufferx, buffery );
+//     [app_oglContext flushBuffer];
+// }
 
 
